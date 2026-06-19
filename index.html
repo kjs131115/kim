@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>삼국지: 동아시아 대전 </title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700;900&family=Inter:wght@300;400;600;700&display=swap');
+        
+        body {
+            font-family: 'Noto Serif KR', 'Inter', serif;
+            background-color: #0f1115;
+            color: #e5e5e5;
+            background-image: radial-gradient(#222 1px, transparent 0);
+            background-size: 24px 24px;
+        }
+
+        .tab-btn.active {
+            border-color: #fbbf24;
+            color: #fbbf24;
+            background-color: rgba(251, 191, 36, 0.05);
+        }
+
+        .faction-wei { border-color: #3b82f6; box-shadow: 0 0 10px rgba(59, 130, 246, 0.2); }
+        .faction-shu { border-color: #22c55e; box-shadow: 0 0 10px rgba(34, 197, 94, 0.2); }
+        .faction-wu { border-color: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); }
+        .faction-goguryeo { border-color: #8b5cf6; box-shadow: 0 0 10px rgba(139, 92, 246, 0.2); }
+        .faction-baekje { border-color: #eab308; box-shadow: 0 0 10px rgba(234, 179, 8, 0.2); }
+        .faction-silla { border-color: #06b6d4; box-shadow: 0 0 10px rgba(6, 182, 212, 0.2); }
+
+        .btn {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .btn:hover {
+            transform: translateY(-1px);
+            filter: brightness(1.15);
+        }
+        .btn:active {
+            transform: translateY(1px);
+        }
+
+        .log-container::-webkit-scrollbar {
+            width: 6px;
+        }
+        .log-container::-webkit-scrollbar-thumb {
+            background-color: #374151;
+            border-radius: 3px;
+        }
+        
+        .combat-anim {
+            animation: shake 0.4s ease-in-out;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-6px); }
+            40%, 80% { transform: translateX(6px); }
+        }
+
+        .gacha-card {
+            perspective: 1000px;
+        }
+        .gacha-card-inner {
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+        }
+        .gacha-card.flipped .gacha-card-inner {
+            transform: rotateY(180deg);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col p-4 md:p-6">
+
+    <header class="max-w-6xl w-full mx-auto flex flex-col md:flex-row justify-between items-center mb-6 gap-4 border-b border-gray-800 pb-4">
+        <div>
+            <h1 class="text-3xl md:text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-600">
+                삼국지: 동아시아 대전
+            </h1>
+            <p class="text-xs text-gray-400 mt-1">턴제 전략 시뮬레이터 & 통합 BM 유료화 검증 프로토타입</p>
+        </div>
+        
+        <!-- 게임 재화 HUD 및 리셋 -->
+        <div class="flex items-center gap-3 bg-gray-900 border border-amber-500/30 rounded-lg px-4 py-2 shadow-inner">
+            <div class="flex items-center gap-2">
+                <span class="text-amber-400 text-sm font-bold"><i class="fa-solid from-yellow-500 fa-gem mr-1"></i> 보유 원보 (Gems):</span>
+                <span id="player-gems" class="text-xl font-black text-white tracking-wider">30,000</span>
+            </div>
+            <button onclick="resetGems()" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-400 px-2 py-1 rounded border border-gray-700 ml-2">
+                충전
+            </button>
+        </div>
+    </header>
+
+    <!-- 네비게이션 탭 -->
+    <nav class="max-w-6xl w-full mx-auto grid grid-cols-3 gap-2 mb-6">
+        <button onclick="switchTab('battle')" id="tab-battle" class="tab-btn active py-3 rounded-lg border-b-2 border-transparent font-bold text-center btn flex justify-center items-center gap-2">
+            <i class="fa-solid fa-shield-halved"></i> <span>공성 지휘소</span>
+        </button>
+        <button onclick="switchTab('shop')" id="tab-shop" class="tab-btn py-3 rounded-lg border-b-2 border-transparent font-bold text-center btn flex justify-center items-center gap-2">
+            <i class="fa-solid fa-cart-shopping text-amber-500"></i> <span>유료 상점 (BM)</span>
+        </button>
+        <button onclick="switchTab('proposal')" id="tab-proposal" class="tab-btn py-3 rounded-lg border-b-2 border-transparent font-bold text-center btn flex justify-center items-center gap-2">
+            <i class="fa-solid fa-file-invoice-dollar"></i> <span>유료 아이템 기획안</span>
+        </button>
+    </nav>
+
+    <main class="max-w-6xl w-full mx-auto flex-grow">
+        
+        <!-- ==================== 1. 전투 탭 ==================== -->
+        <div id="view-battle" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- 왼쪽 패널: 국가 및 외교 정보 -->
+            <section class="col-span-1 bg-gray-900/85 border border-gray-800 rounded-xl p-5 shadow-2xl">
+                <h2 class="text-xl font-bold mb-4 border-b border-gray-800 pb-2 flex justify-between items-center">
+                    <span>세력 및 외교 판도</span>
+                    <span class="text-xs bg-gray-800 px-2 py-0.5 rounded text-gray-400">외교 고정</span>
+                </h2>
+                <div id="faction-list" class="space-y-3">
+                    <!-- Factions rendered dynamically -->
+                </div>
+
+                <!-- 획득한 특수 버프 현황판 -->
+                <div class="mt-6 bg-gradient-to-r from-amber-950/20 to-gray-900 border border-amber-500/20 rounded-xl p-4">
+                    <h3 class="text-sm font-bold text-amber-400 mb-2"><i class="fa-solid fa-circle-info mr-1"></i> 현재 활성화된 유료 버프</h3>
+                    <div id="active-buffs-list" class="text-xs space-y-1 text-gray-400">
+                        <div class="text-gray-500">활성화된 버프가 없습니다. 상점에서 비약을 구매해 보세요!</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 중앙/오른쪽 패널: 전투 시뮬레이터 -->
+            <section class="col-span-1 lg:col-span-2 bg-gray-900/85 border border-gray-800 rounded-xl p-5 shadow-2xl flex flex-col">
+                <h2 class="text-xl font-bold mb-4 border-b border-gray-800 pb-2">실시간 공성 지휘본부</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <!-- 공격진영 -->
+                    <div class="bg-black/40 p-4 rounded-xl border border-red-950/30 relative">
+                        <div class="absolute -top-3 left-4 bg-red-700 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shadow-md">공격군 (공성)</div>
+                        
+                        <label class="block text-xs text-gray-500 mb-1 mt-2">출전 국가</label>
+                        <select id="atk-faction" class="w-full bg-gray-800 border border-gray-700 rounded p-2 mb-3 text-white focus:outline-none focus:border-red-500 text-sm"></select>
+                        
+                        <label class="block text-xs text-gray-500 mb-1">지휘 장수 <span class="text-amber-400 font-bold" id="atk-vip-badge"></span></label>
+                        <select id="atk-officer" class="w-full bg-gray-800 border border-gray-700 rounded p-2 mb-3 text-white focus:outline-none focus:border-red-500 text-sm"></select>
+                        
+                        <label class="block text-xs text-gray-500 mb-1">배치 병과</label>
+                        <select id="atk-unit" class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white focus:outline-none focus:border-red-500 text-sm">
+                            <option value="infantry">🛡️ 보병 (궁병 우세, 기병 열세)</option>
+                            <option value="cavalry">🐎 기병 (보병 우세, 궁병 열세)</option>
+                            <option value="archer">🏹 궁병 (기병 우세, 보병 열세)</option>
+                        </select>
+                    </div>
+
+                    <!-- 수비진영 -->
+                    <div class="bg-black/40 p-4 rounded-xl border border-blue-950/30 relative">
+                        <div class="absolute -top-3 left-4 bg-blue-700 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider shadow-md">수비군 (수성)</div>
+                        
+                        <label class="block text-xs text-gray-500 mb-1 mt-2">출전 국가</label>
+                        <select id="def-faction" class="w-full bg-gray-800 border border-gray-700 rounded p-2 mb-3 text-white focus:outline-none focus:border-blue-500 text-sm"></select>
+                        
+                        <label class="block text-xs text-gray-500 mb-1">지휘 장수 <span class="text-amber-400 font-bold" id="def-vip-badge"></span></label>
+                        <select id="def-officer" class="w-full bg-gray-800 border border-gray-700 rounded p-2 mb-3 text-white focus:outline-none focus:border-blue-500 text-sm"></select>
+                        
+                        <label class="block text-xs text-gray-500 mb-1">배치 병과</label>
+                        <select id="def-unit" class="w-full bg-gray-800 border border-gray-700 rounded p-2 text-white focus:outline-none focus:border-blue-500 text-sm">
+                            <option value="infantry">🛡️ 보병 (궁병 우세, 기병 열세)</option>
+                            <option value="cavalry">🐎 기병 (보병 우세, 궁병 열세)</option>
+                            <option value="archer">🏹 궁병 (기병 우세, 보병 열세)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 전투 개시 버튼 -->
+                <div class="flex justify-center mb-5">
+                    <button id="btn-battle" class="btn bg-gradient-to-r from-red-600 via-orange-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-black py-3 px-12 rounded-full shadow-lg text-lg border border-red-500/30">
+                        전투 개시 ⚔️
+                    </button>
+                </div>
+
+                <!-- 인게임 토스트 알림 영역 -->
+                <div id="toast-container" class="hidden bg-amber-900/90 border border-amber-500 text-white text-xs px-4 py-2.5 rounded-lg mb-4 text-center font-bold shadow-lg animate-bounce">
+                </div>
+
+                <!-- 전투 로그 콘솔 -->
+                <div class="flex-grow flex flex-col">
+                    <h3 class="text-sm font-bold mb-2 text-gray-400 flex items-center justify-between">
+                        <span>전투 기록서</span>
+                        <span class="text-[10px] text-gray-500 font-mono">Realtime Siege Log</span>
+                    </h3>
+                    <div id="combat-log" class="log-container bg-black/60 border border-gray-800 rounded-xl flex-grow p-4 overflow-y-auto h-56 font-mono text-xs space-y-2.5 shadow-inner">
+                        <div class="text-gray-600 text-center mt-16"><i class="fa-solid fa-hourglass-start animate-spin mr-1"></i> 전장에서의 첩보를 기다리는 중...</div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- ==================== 2. 유료 상점 탭 (BM 시뮬레이션) ==================== -->
+        <div id="view-shop" class="hidden space-y-6">
+            
+            <!-- 상단 가챠 뽑기 배너 -->
+            <div class="bg-gradient-to-r from-indigo-950 via-purple-950 to-amber-950 border border-amber-500/20 rounded-2xl p-6 shadow-2xl relative overflow-hidden flex flex-col md:flex-row justify-between items-center gap-6">
+                <div class="z-10 text-center md:text-left">
+                    <span class="bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">PREMIUM SUMMON</span>
+                    <h3 class="text-2xl font-black text-white mt-1">한·중 역사 명장 소집령</h3>
+                    <p class="text-xs text-gray-300 mt-1 max-w-lg">
+                        위·촉·오의 신화적 명장뿐만 아니라 고구려의 영웅 <b class="text-purple-400">광개토대왕</b>, 백제의 전성군주 <b class="text-yellow-400">근초고왕</b> 등 한반도 역사 속 SSS 등급 신급 영웅들을 소환하세요! (원보 소모)
+                    </p>
+                </div>
+                <div class="z-10 flex gap-3 flex-shrink-0">
+                    <button onclick="performGacha(1)" class="btn bg-gray-800 hover:bg-gray-700 text-amber-400 font-bold py-3 px-5 rounded-xl border border-gray-700 text-sm">
+                        1회 소환 <span class="text-xs block text-gray-400"><i class="fa-solid fa-gem text-amber-500"></i> 600 원보</span>
+                    </button>
+                    <button onclick="performGacha(10)" class="btn bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-black font-black py-3 px-6 rounded-xl text-sm shadow-lg shadow-amber-500/10">
+                        🎁 10회 연속 소환 <span class="text-xs block text-black/80"><i class="fa-solid fa-gem text-black/60"></i> 5,000 원보</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 가챠 개봉 연출 오버레이 (숨김 처리) -->
+            <div id="gacha-reveal-screen" class="hidden bg-black/90 rounded-2xl p-6 border border-gray-800 text-center space-y-4">
+                <h4 class="text-lg font-bold text-amber-400"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i> 소환 결과</h4>
+                <div id="gacha-cards-container" class="grid grid-cols-2 sm:grid-cols-5 gap-3 justify-center max-w-4xl mx-auto py-4">
+                    <!-- Cards injected via JS -->
+                </div>
+                <button onclick="closeGachaReveal()" class="btn bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg text-xs">
+                    확인 및 닫기
+                </button>
+            </div>
+
+            <!-- 유료 패키지 상품군 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- 아이템 1: VIP 통치 프리패스 -->
+                <div class="bg-gray-900 border border-amber-500/30 rounded-xl p-5 flex flex-col justify-between shadow-lg relative overflow-hidden">
+                    <div class="absolute top-0 right-0 bg-amber-500 text-black text-[9px] px-3 py-1 rounded-bl-lg font-bold">인기 상품</div>
+                    <div>
+                        <div class="text-amber-400 text-2xl mb-2"><i class="fa-solid fa-crown"></i></div>
+                        <h4 class="text-lg font-bold text-white mb-1">황제 특권 프리패스</h4>
+                        <p class="text-xs text-gray-400 leading-relaxed mb-4">
+                            활성화 시 모든 장수의 기본 전투력이 상시 <span class="text-amber-400 font-bold">+10%</span> 증가합니다. (중첩 가능)
+                        </p>
+                    </div>
+                    <div>
+                        <div class="border-t border-gray-800 pt-3 flex justify-between items-center">
+                            <span class="text-white font-black"><i class="fa-solid fa-gem text-amber-500 text-xs"></i> 8,000 원보</span>
+                            <button onclick="buyVipPass()" class="btn bg-amber-500 hover:bg-amber-400 text-black font-bold py-1.5 px-4 rounded text-xs">구매</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 아이템 2: 전설의 명검 패키지 -->
+                <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 flex flex-col justify-between shadow-lg">
+                    <div>
+                        <div class="text-purple-400 text-2xl mb-2"><i class="fa-solid fa-shield-cat"></i></div>
+                        <h4 class="text-lg font-bold text-white mb-1">천자 검(天子劍) 패키지</h4>
+                        <p class="text-xs text-gray-400 leading-relaxed mb-4">
+                            장비 장착 슬롯에 무력 보정치 <span class="text-purple-400 font-bold">+15</span>를 주는 영구 전설 장비를 무기고에 추가합니다.
+                        </p>
+                    </div>
+                    <div>
+                        <div class="border-t border-gray-800 pt-3 flex justify-between items-center">
+                            <span class="text-white font-black"><i class="fa-solid fa-gem text-amber-500 text-xs"></i> 4,500 원보</span>
+                            <button onclick="buyEquip('sword')" class="btn bg-purple-600 hover:bg-purple-500 text-white font-bold py-1.5 px-4 rounded text-xs">구매</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 아이템 3: 청랑신의 비약 (전투력 임시 버프) -->
+                <div class="bg-gray-900 border border-gray-800 rounded-xl p-5 flex flex-col justify-between shadow-lg">
+                    <div>
+                        <div class="text-green-400 text-2xl mb-2"><i class="fa-solid fa-flask"></i></div>
+                        <h4 class="text-lg font-bold text-white mb-1">신의(神醫) 영약</h4>
+                        <p class="text-xs text-gray-400 leading-relaxed mb-4">
+                            전투 시 1회 한정으로 장수의 치명적 무작위 확률(난수 변동성)을 긍정적인 최고치(MAX)로 보정해 줍니다.
+                        </p>
+                    </div>
+                    <div>
+                        <div class="border-t border-gray-800 pt-3 flex justify-between items-center">
+                            <span class="text-white font-black"><i class="fa-solid fa-gem text-amber-500 text-xs"></i> 1,200 원보</span>
+                            <button onclick="buyElixir()" class="btn bg-green-600 hover:bg-green-500 text-white font-bold py-1.5 px-4 rounded text-xs">구매</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ==================== 3. 기획안 탭 ==================== -->
+        <div id="view-proposal" class="hidden bg-gray-950/80 border border-gray-800 rounded-xl p-6 shadow-2xl space-y-6 max-w-4xl mx-auto">
+            <div>
+                <span class="bg-red-500/10 text-red-400 border border-red-500/20 text-xs px-2.5 py-1 rounded-full font-bold">기획 보고서</span>
+                <h3 class="text-2xl font-black text-white mt-2">삼국지: 동아시아 대전 유료 모델(BM) 전략 제안</h3>
+                <p class="text-sm text-gray-400 mt-1">
+                    전통 수집형 RPG와 영지 점령 전략 장르의 하이브리드 경제 시스템 구현 방안을 기술합니다.
+                </p>
+            </div>
+
+            <div class="space-y-4 text-sm leading-relaxed text-gray-300 border-t border-gray-800 pt-4">
+                
+                <div>
+                    <h4 class="text-base font-bold text-amber-400 mb-2">1. 타겟 유저군별 BM 핵심 구성</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="bg-gray-900/60 p-4 rounded-lg border border-gray-800">
+                            <span class="text-xs text-blue-400 font-bold">💡 소과금/라이트 유저 (Minnow)</span>
+                            <h5 class="font-bold text-white mt-1 text-sm">월 정액 & 영토 패스 (구독 시스템)</h5>
+                            <ul class="list-disc pl-4 mt-2 space-y-1 text-xs text-gray-400">
+                                <li><b>매일 원보 패키지:</b> 저비용 고효율로 게임 접속 및 리텐션을 확보하는 기본 장치.</li>
+                                <li><b>공성 진격 패스 (배틀 패스):</b> 신라/고구려/백제 등 각 세력 거점을 신규로 점령할 때마다 성장에 필수적인 한정 자원을 차등 배포.</li>
+                            </ul>
+                        </div>
+                        <div class="bg-gray-900/60 p-4 rounded-lg border border-gray-800">
+                            <span class="text-xs text-purple-400 font-bold">💎 중과금/콜렉터 유저 (Dolphin)</span>
+                            <h5 class="font-bold text-white mt-1 text-sm">가차가 결합된 수집형 장비 및 장수 풀</h5>
+                            <ul class="list-disc pl-4 mt-2 space-y-1 text-xs text-gray-400">
+                                <li><b>한·중 역사 소환권:</b> 삼국지의 황건당립부터 서진 건국까지, 그리고 동시대 한반도의 삼국(동천왕, 근초고왕, 이사부) 명장까지 결합된 한정 소환.</li>
+                                <li><b>전용 보물 수집:</b> 청룡언월도, 천자검, 개마무사 특수 안장 등 장수의 능력치 시너지를 강화시키는 도감형 유료 인벤토리.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="text-base font-bold text-amber-400 mb-2">2. 헤비 과금러(Whale) 공략 요소: 경쟁과 명예</h4>
+                    <div class="bg-gray-900/40 p-4 rounded-lg border border-gray-800 space-y-2">
+                        <p class="text-xs text-gray-300">
+                            전략 턴제 시뮬레이션에서 상위 연맹 간의 영토 분쟁 시 핵과금러가 존재감을 뽐낼 수 있도록 유도합니다.
+                        </p>
+                        <ul class="list-disc pl-4 space-y-1 text-xs text-gray-400">
+                            <li><b class="text-white">성벽 외관/스킨 아이템:</b> 점령한 주요 요충 성지(낙양, 평양성 등)에 본인의 고유 문장 및 황금 테두리 영구 전시.</li>
+                            <li><b class="text-white">연맹 축복 원보 분배:</b> 한 명의 VIP 유저가 '연맹 원보팩'을 상점에서 대량 구매 시 동맹 전원에게 소량의 가차 재화가 뿌려져 길드 내 소속감과 고래 유저의 위상을 높임.</li>
+                            <li><b class="text-white">전략성 촉진 소모품:</b> '쾌속 행군권'(출격 대기 시간 0초 단축), '보호 장막'(8시간 공성 면역) 등 시공간적 변수를 통제하는 유료 아이템.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="text-base font-bold text-amber-400 mb-2">3. 밸런스 유지 철학</h4>
+                    <p class="text-xs text-gray-400 leading-relaxed">
+                        P2W(Pay to Win)의 부작용을 최소화하기 위해 '병종 상성 가중치'를 유료 아이템 보정치보다 크게 가져갑니다. 아무리 유료 무기를 장착하고 VIP 패스를 결제한 강력한 '기병' 군주라 할지라도 무소과금 유저가 촘촘히 짠 '궁병(기병 극상성)' 방어벽과 역사적 지리적 이점을 이용한다면 전술적 격파를 달성할 수 있도록 설계해야 롱런하는 게임이 됩니다.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // 전역 상태 관리
+        const STATE = {
+            gems: 30000,
+            hasVipPass: false,
+            equippedWeapon: null, // 'sword'
+            activeElixirsCount: 0,
+            unlockedOfficers: {
+                wei: [
+                    { name: '조조', force: 72, tier: 'R' },
+                    { name: '사마의', force: 63, tier: 'R' },
+                    { name: '하후돈', force: 90, tier: 'SR' },
+                    { name: '장료', force: 92, tier: 'SR' },
+                    { name: '사마염', force: 60, tier: 'R' }
+                ],
+                shu: [
+                    { name: '관우', force: 97, tier: 'SR' },
+                    { name: '장비', force: 98, tier: 'SR' },
+                    { name: '조운', force: 96, tier: 'SR' },
+                    { name: '제갈량', force: 38, tier: 'R' },
+                    { name: '강유', force: 89, tier: 'R' }
+                ],
+                wu: [
+                    { name: '손견', force: 90, tier: 'R' },
+                    { name: '태사자', force: 93, tier: 'SR' },
+                    { name: '감녕', force: 94, tier: 'SR' },
+                    { name: '주유', force: 71, tier: 'R' },
+                    { name: '육손', force: 69, tier: 'R' }
+                ],
+                goguryeo: [
+                    { name: '동천왕', force: 85, tier: 'R' },
+                    { name: '명림답부', force: 82, tier: 'R' },
+                    { name: '밀우', force: 91, tier: 'SR' },
+                    { name: '유유', force: 88, tier: 'R' }
+                ],
+                baekje: [
+                    { name: '고이왕', force: 80, tier: 'R' },
+                    { name: '근초고왕', force: 92, tier: 'SR' },
+                    { name: '목라근자', force: 89, tier: 'R' }
+                ],
+                silla: [
+                    { name: '내물왕', force: 75, tier: 'R' },
+                    { name: '박제상', force: 40, tier: 'R' },
+                    { name: '이사부', force: 86, tier: 'R' }
+                ]
+            }
+        };
+
+        // 전체 가챠 전용 프리미엄 라인업 풀
+        const GACHA_POOL = [
+            { name: '광개토대왕', force: 100, tier: 'SSS', faction: 'goguryeo' },
+            { name: '근초고왕', force: 96, tier: 'SS', faction: 'baekje' },
+            { name: '이순신(시간초월)', force: 100, tier: 'SSS', faction: 'silla' },
+            { name: '여포', force: 100, tier: 'SSS', faction: 'wei' },
+            { name: '연개소문', force: 98, tier: 'SS', faction: 'goguryeo' },
+            { name: '김유신', force: 94, tier: 'SS', faction: 'silla' },
+            { name: '계백', force: 95, tier: 'SS', faction: 'baekje' },
+            { name: '을지문덕', force: 97, tier: 'SS', faction: 'goguryeo' },
+            { name: '초선(경국지색)', force: 80, tier: 'SR', faction: 'shu' },
+            { name: '장각(태평요술)', force: 75, tier: 'R', faction: 'wei' }
+        ];
+
+        // 기본 국가 속성
+        const FACTIONS = {
+            wei: { id: 'wei', name: '조위 (위)', color: 'faction-wei', text: 'text-blue-400', relations: { goguryeo: 'hostile' } },
+            shu: { id: 'shu', name: '촉한 (촉)', color: 'faction-shu', text: 'text-green-400', relations: {} },
+            wu: { id: 'wu', name: '손오 (오)', color: 'faction-wu', text: 'text-red-400', relations: { baekje: 'ally' } },
+            goguryeo: { id: 'goguryeo', name: '고구려', color: 'faction-goguryeo', text: 'text-purple-400', relations: { wei: 'hostile' } },
+            baekje: { id: 'baekje', name: '백제', color: 'faction-baekje', text: 'text-yellow-400', relations: { wu: 'ally' } },
+            silla: { id: 'silla', name: '신라', color: 'faction-silla', text: 'text-cyan-400', relations: {} }
+        };
+
+        // 병종 상성 정의
+        const UNITS = {
+            infantry: { name: '보병', strongAgainst: 'archer', weakAgainst: 'cavalry' },
+            cavalry: { name: '기병', strongAgainst: 'infantry', weakAgainst: 'archer' },
+            archer: { name: '궁병', strongAgainst: 'cavalry', weakAgainst: 'infantry' }
+        };
+
+        // 초기화 함수
+        window.onload = function() {
+            renderFactions();
+            populateSelects();
+            bindEvents();
+            updateHUD();
+            updateBuffDashboard();
+        }
+
+        // 화면 탭 전환 함수
+        function switchTab(tabId) {
+            document.querySelectorAll('nav button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('tab-' + tabId).classList.add('active');
+
+            document.getElementById('view-battle').classList.add('hidden');
+            document.getElementById('view-shop').classList.add('hidden');
+            document.getElementById('view-proposal').classList.add('hidden');
+
+            document.getElementById('view-' + tabId).classList.remove('hidden');
+        }
+
+        // HUD 및 UI 상태 동기화
+        function updateHUD() {
+            document.getElementById('player-gems').textContent = Number(STATE.gems).toLocaleString();
+            
+            // 공성전 장수 정보 리프레시 대응
+            const curAtkFac = document.getElementById('atk-faction').value;
+            const curDefFac = document.getElementById('def-faction').value;
+            if(curAtkFac) updateOfficersDropdown('atk', curAtkFac);
+            if(curDefFac) updateOfficersDropdown('def', curDefFac);
+        }
+
+        // 세력 판세 우측 실시간 렌더링
+        function renderFactions() {
+            const listEl = document.getElementById('faction-list');
+            listEl.innerHTML = '';
+            for (const key in FACTIONS) {
+                const faction = FACTIONS[key];
+                let relationText = '<span class="text-gray-500 text-[11px]"><i class="fa-solid fa-handshake"></i> 평화협정 (중립)</span>';
+                
+                if (faction.relations.hostile) {
+                    relationText = `<span class="text-red-400 text-[11px] font-bold"><i class="fa-solid fa-skull-crossbones mr-1"></i> 주적: ${FACTIONS[faction.relations.hostile].name}</span>`;
+                } else if (faction.relations.ally) {
+                    relationText = `<span class="text-blue-400 text-[11px] font-bold"><i class="fa-solid fa-shield-halved mr-1"></i> 군사동맹: ${FACTIONS[faction.relations.ally].name}</span>`;
+                }
+
+                const el = document.createElement('div');
+                el.className = `p-3 rounded-lg border-l-4 bg-black/40 flex justify-between items-center ${faction.color}`;
+                el.innerHTML = `
+                    <div>
+                        <div class="font-bold text-xs ${faction.text}">${faction.name}</div>
+                        <div>${relationText}</div>
+                    </div>
+                    <div class="text-[10px] text-gray-500 bg-gray-850 px-2 py-1 rounded">
+                        장수 ${STATE.unlockedOfficers[key].length}명 보유
+                    </div>
+                `;
+                listEl.appendChild(el);
+            }
+        }
+
+        // 셀렉트 박스 바인딩 및 세팅
+        function populateSelects() {
+            const atkSelect = document.getElementById('atk-faction');
+            const defSelect = document.getElementById('def-faction');
+            
+            atkSelect.innerHTML = '';
+            defSelect.innerHTML = '';
+
+            for (const key in FACTIONS) {
+                atkSelect.add(new Option(FACTIONS[key].name, key));
+                defSelect.add(new Option(FACTIONS[key].name, key));
+            }
+
+            atkSelect.value = 'wei';
+            defSelect.value = 'goguryeo';
+
+            updateOfficersDropdown('atk', 'wei');
+            updateOfficersDropdown('def', 'goguryeo');
+        }
+
+        // 장수 드롭다운 채우기
+        function updateOfficersDropdown(side, factionKey) {
+            const selectEl = document.getElementById(side + '-officer');
+            selectEl.innerHTML = '';
+            
+            const officers = STATE.unlockedOfficers[factionKey];
+            officers.forEach((off, idx) => {
+                let badge = off.tier ? `[${off.tier}] ` : '';
+                selectEl.add(new Option(`${badge}${off.name} (무력: ${off.force})`, idx));
+            });
+        }
+
+        // 버프 현황 정보 갱신
+        function updateBuffDashboard() {
+            const container = document.getElementById('active-buffs-list');
+            container.innerHTML = '';
+
+            let hasAny = false;
+
+            if (STATE.hasVipPass) {
+                hasAny = true;
+                container.innerHTML += `<div class="text-amber-400 font-bold flex items-center gap-1">
+                    <i class="fa-solid fa-crown text-[10px]"></i> 황제 특권 활성화 (모든 아군 무력 +10%)
+                </div>`;
+            }
+
+            if (STATE.equippedWeapon) {
+                hasAny = true;
+                container.innerHTML += `<div class="text-purple-400 font-bold flex items-center gap-1">
+                    <i class="fa-solid fa-shield-cat text-[10px]"></i> 전설: 천자검 장착 중 (무력 수치 +15 보정)
+                </div>`;
+            }
+
+            if (STATE.activeElixirsCount > 0) {
+                hasAny = true;
+                container.innerHTML += `<div class="text-green-400 font-bold flex items-center gap-1">
+                    <i class="fa-solid fa-flask text-[10px]"></i> 신의 영약 보유량: ${STATE.activeElixirsCount}개 (다음 전투 100% 극대화 보장)
+                </div>`;
+            }
+
+            if (!hasAny) {
+                container.innerHTML = `<div class="text-gray-500 text-[11px]">활성화된 유료 버프가 없습니다. 상점을 방문해보세요!</div>`;
+            }
+        }
+
+        // 이벤트 바인딩
+        function bindEvents() {
+            document.getElementById('atk-faction').addEventListener('change', (e) => {
+                updateOfficersDropdown('atk', e.target.value);
+            });
+            document.getElementById('def-faction').addEventListener('change', (e) => {
+                updateOfficersDropdown('def', e.target.value);
+            });
+            document.getElementById('btn-battle').addEventListener('click', startBattle);
+        }
+
+        // 인게임 토스트 출력 함수 (alert 금지 규칙 적용)
+        function showToast(msg) {
+            const toast = document.getElementById('toast-container');
+            toast.textContent = msg;
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 3000);
+        }
+
+        // 보석 리셋 충전
+        function resetGems() {
+            STATE.gems = 30000;
+            updateHUD();
+            showToast("💎 시뮬레이션용 원보가 30,000 원보 충전되었습니다!");
+        }
+
+        // 상점 구매 처리
+        function buyVipPass() {
+            if (STATE.gems < 8000) {
+                showToast("❌ 원보가 부족합니다! 충전 버튼을 눌러주세요.");
+                return;
+            }
+            STATE.gems -= 8000;
+            STATE.hasVipPass = true;
+            updateHUD();
+            updateBuffDashboard();
+            showToast("👑 [황제 특권 프리패스]가 영구 활성화되었습니다. 모든 아군의 전력 +10%!");
+        }
+
+        function buyEquip(type) {
+            if (STATE.gems < 4500) {
+                showToast("❌ 원보가 부족합니다!");
+                return;
+            }
+            if (STATE.equippedWeapon === 'sword') {
+                showToast("⚠️ 이미 소지 중인 단일 고유 장비입니다.");
+                return;
+            }
+            STATE.gems -= 4500;
+            STATE.equippedWeapon = 'sword';
+            updateHUD();
+            updateBuffDashboard();
+            showToast("⚔️ 전설 무기 [천자검]이 영구 장착되었습니다. 모든 아군 장수 무력 +15!");
+        }
+
+        function buyElixir() {
+            if (STATE.gems < 1200) {
+                showToast("❌ 원보가 부족합니다!");
+                return;
+            }
+            STATE.gems -= 1200;
+            STATE.activeElixirsCount += 1;
+            updateHUD();
+            updateBuffDashboard();
+            showToast("🧪 [신의 영약] 1개를 구비했습니다. 공성전 난수가 극대화됩니다!");
+        }
+
+        // 가차(뽑기) 시뮬레이터 구동
+        function performGacha(times) {
+            const price = times === 1 ? 600 : 5000;
+            if (STATE.gems < price) {
+                showToast("❌ 가차를 진행하기 위한 원보가 부족합니다!");
+                return;
+            }
+            STATE.gems -= price;
+            updateHUD();
+
+            const container = document.getElementById('gacha-cards-container');
+            container.innerHTML = '';
+            document.getElementById('gacha-reveal-screen').classList.remove('hidden');
+
+            const results = [];
+            for (let i = 0; i < times; i++) {
+                // 가챠 확률 분배: SSS(3%), SS(15%), SR(35%), R(47%)
+                const rand = Math.random() * 100;
+                let selectedHero = null;
+
+                if (rand < 5) { // SSS
+                    const sss = GACHA_POOL.filter(h => h.tier === 'SSS');
+                    selectedHero = sss[Math.floor(Math.random() * sss.length)];
+                } else if (rand < 25) { // SS
+                    const ss = GACHA_POOL.filter(h => h.tier === 'SS');
+                    selectedHero = ss[Math.floor(Math.random() * ss.length)];
+                } else if (rand < 60) { // SR
+                    const sr = GACHA_POOL.filter(h => h.tier === 'SR');
+                    selectedHero = sr[Math.floor(Math.random() * sr.length)];
+                } else { // R
+                    const r = GACHA_POOL.filter(h => h.tier === 'R');
+                    selectedHero = r[Math.floor(Math.random() * r.length)];
+                }
+                
+                // 중복 장수가 아닐 시 획득 데이터에 누적
+                addGachaHeroToFaction(selectedHero);
+                results.push(selectedHero);
+            }
+
+            // 가챠 카드 연출 생성
+            results.forEach((hero, idx) => {
+                const card = document.createElement('div');
+                card.className = 'gacha-card w-full h-28 cursor-pointer relative';
+                
+                let tierColor = 'bg-gray-800 border-gray-700';
+                if (hero.tier === 'SSS') tierColor = 'bg-gradient-to-b from-amber-600 to-yellow-950 border-amber-500 text-yellow-300';
+                else if (hero.tier === 'SS') tierColor = 'bg-gradient-to-b from-purple-800 to-indigo-950 border-purple-500 text-purple-300';
+                else if (hero.tier === 'SR') tierColor = 'bg-gradient-to-b from-blue-900 to-gray-950 border-blue-500 text-blue-300';
+
+                card.innerHTML = `
+                    <div class="gacha-card-inner w-full h-full relative text-center flex flex-col justify-center items-center border rounded-xl shadow-md ${tierColor}">
+                        <div class="text-[9px] font-bold uppercase tracking-widest">${hero.tier} 등급</div>
+                        <div class="font-black text-sm text-white mt-1">${hero.name}</div>
+                        <div class="text-[10px] text-gray-300 mt-1">무력: ${hero.force}</div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        // 획득한 특수 등급 장수를 가문 리스트에 보존
+        function addGachaHeroToFaction(hero) {
+            const factionList = STATE.unlockedOfficers[hero.faction];
+            const exists = factionList.some(off => off.name === hero.name);
+            if (!exists) {
+                factionList.push({
+                    name: hero.name,
+                    force: hero.force,
+                    tier: hero.tier
+                });
+            }
+        }
+
+        function closeGachaReveal() {
+            document.getElementById('gacha-reveal-screen').classList.add('hidden');
+            renderFactions();
+            updateHUD();
+        }
+
+        // 실제 전투 연산 개시
+        function startBattle() {
+            const atkFacId = document.getElementById('atk-faction').value;
+            const defFacId = document.getElementById('def-faction').value;
+
+            // 외교동맹 예외 예방
+            if (atkFacId === defFacId) {
+                showToast("❌ 같은 국가끼리는 공성을 걸 수 없습니다!");
+                return;
+            }
+            if (FACTIONS[atkFacId].relations.ally === defFacId || FACTIONS[defFacId].relations.ally === atkFacId) {
+                showToast(`🤝 평화주의자 경고! ${FACTIONS[atkFacId].name}와(과) ${FACTIONS[defFacId].name}은(는) 상호 침략 불가 동맹입니다!`);
+                return;
+            }
+
+            const atkOffIdx = document.getElementById('atk-officer').value;
+            const defOffIdx = document.getElementById('def-officer').value;
+
+            const atkOff = STATE.unlockedOfficers[atkFacId][atkOffIdx];
+            const defOff = STATE.unlockedOfficers[defFacId][defOffIdx];
+
+            const atkUnitKey = document.getElementById('atk-unit').value;
+            const defUnitKey = document.getElementById('def-unit').value;
+            
+            const atkUnit = UNITS[atkUnitKey];
+            const defUnit = UNITS[defUnitKey];
+
+            // 1. 기본 병종 상성 계산
+            let atkMultiplier = 1.0;
+            let defMultiplier = 1.0;
+            let advantageText = "<span class='text-gray-500'>[대등] 어느 쪽도 병과 우세를 얻지 못했습니다.</span>";
+
+            if (atkUnit.strongAgainst === defUnitKey) {
+                atkMultiplier = 1.4;
+                defMultiplier = 0.8;
+                advantageText = `<span class='text-blue-400 font-bold'>⚡ 공격측 상성 폭발! (${atkUnit.name} > ${defUnit.name}) 공격력 가중</span>`;
+            } else if (atkUnit.weakAgainst === defUnitKey) {
+                atkMultiplier = 0.8;
+                defMultiplier = 1.4;
+                advantageText = `<span class='text-red-400 font-bold'>⚡ 수비측 상성 요새! (${defUnit.name} > ${atkUnit.name}) 방어력 가중</span>`;
+            }
+
+            // 2. 유료 버프 대입 연산
+            let buffAtkAddition = 0;
+            let vipMultiplier = 1.0;
+
+            if (STATE.hasVipPass) {
+                vipMultiplier = 1.1; // 황제특권 10% 전력 버프
+            }
+
+            if (STATE.equippedWeapon === 'sword') {
+                buffAtkAddition = 15; // 천자검 가중
+            }
+
+            // 난수 생성 및 영약 효과
+            let atkRandomBonus = 0.9 + Math.random() * 0.2; // 0.9 ~ 1.1 기본 범위
+            if (STATE.activeElixirsCount > 0) {
+                STATE.activeElixirsCount--; // 영약 1개 소모
+                atkRandomBonus = 1.15; // 상한값으로 고정 및 버프 효과 극대화
+                updateBuffDashboard();
+            }
+
+            let defRandomBonus = 0.9 + Math.random() * 0.2;
+
+            // 최종 위력 연산
+            const atkFinalPower = Math.floor(((atkOff.force + buffAtkAddition) * atkMultiplier * vipMultiplier) * atkRandomBonus);
+            const defFinalPower = Math.floor((defOff.force * defMultiplier) * defRandomBonus);
+
+            executeBattleAnimation(atkFacId, atkOff, atkUnit, atkFinalPower, defFacId, defOff, defUnit, defFinalPower, advantageText);
+        }
+
+        // 전투 시각 연출 출력
+        function executeBattleAnimation(atkFac, atkOff, atkUnit, atkPower, defFac, defOff, defUnit, defPower, advText) {
+            const consoleLog = document.getElementById('combat-log');
+            consoleLog.innerHTML = ''; // 콘솔 초기화
+
+            const battleBtn = document.getElementById('btn-battle');
+            battleBtn.classList.add('combat-anim');
+            setTimeout(() => battleBtn.classList.remove('combat-anim'), 400);
+
+            let logSequences = [];
+            logSequences.push(`<div class="text-amber-400 font-bold border-b border-gray-800 pb-1.5"><i class="fa-solid fa-swords"></i> 전쟁 개시: [${FACTIONS[atkFac].name}] ${atkOff.name} vs [${FACTIONS[defFac].name}] ${defOff.name}</div>`);
+            logSequences.push(`<div>병과 전술 배치: <span class="text-red-400">${atkUnit.name}대</span> 진격 vs <span class="text-blue-400">${defUnit.name}대</span> 수성</div>`);
+            logSequences.push(`<div>${advText}</div>`);
+
+            // 아이템 적용 피드백 삽입
+            if (STATE.hasVipPass || STATE.equippedWeapon || STATE.activeElixirsCount >= 0) {
+                let itemsApplied = [];
+                if (STATE.hasVipPass) itemsApplied.push('<span class="text-amber-400 font-bold">[VIP 황제특권 +10%]</span>');
+                if (STATE.equippedWeapon) itemsApplied.push('<span class="text-purple-400 font-bold">[전설 천자검 +15]</span>');
+                if (STATE.activeElixirsCount >= 0) {
+                    // 한 번의 전투를 앞서서 영약이 하나 적용된 상태를 출력
+                    itemsApplied.push('<span class="text-green-400 font-bold">[신의 영약: 전술 극대화]</span>');
+                }
+                logSequences.push(`<div class="text-xs text-gray-400 bg-gray-950 p-2 rounded-lg">적용된 군단 유료 버프: ${itemsApplied.join(', ')}</div>`);
+            }
+
+            logSequences.push(`<div class="text-gray-700 font-mono">---------------------------------------------</div>`);
+            logSequences.push(`<div>[공격] ${atkOff.name}의 돌격부대 성벽 강습! <b class="text-red-400">(종합 파괴력: ${atkPower})</b></div>`);
+            logSequences.push(`<div>[수비] ${defOff.name}의 성문 수호 방어선 가동! <b class="text-blue-400">(종합 수비력: ${defPower})</b></div>`);
+
+            // 승패 결말
+            let finalOutput = '';
+            const powerDiff = atkPower - defPower;
+
+            if (powerDiff > 25) {
+                finalOutput = `<div class="text-green-400 font-black mt-2 text-sm"><i class="fa-solid fa-trophy mr-1 animate-bounce"></i> 압도적 대승! ${atkOff.name}이(가) 성벽의 깃발을 꺾고 패권을 증명했습니다!</div>`;
+            } else if (powerDiff > 0) {
+                finalOutput = `<div class="text-emerald-400 font-bold mt-2"><i class="fa-solid fa-flag mr-1"></i> 승리! 아군의 공성망치 공세가 유효하여 성문을 격파했습니다.</div>`;
+            } else if (powerDiff === 0) {
+                finalOutput = `<div class="text-yellow-400 font-bold mt-2"><i class="fa-solid fa-handshake-angle mr-1"></i> 무승부! 양국 군사들의 시체만 쌓인 채 고전하며 퇴각합니다.</div>`;
+            } else if (powerDiff < -25) {
+                finalOutput = `<div class="text-red-500 font-black mt-2 text-sm"><i class="fa-solid fa-skull mr-1"></i> 참패! 적 성벽 요새 장수의 철옹성 방어에 아군 전위대가 전멸했습니다.</div>`;
+            } else {
+                finalOutput = `<div class="text-orange-400 font-bold mt-2"><i class="fa-solid fa-person-running mr-1"></i> 패배! 사상자가 막대하여 군대를 회군합니다.</div>`;
+            }
+            logSequences.push(finalOutput);
+
+            // 순차적 타이핑 연출
+            logSequences.forEach((line, index) => {
+                setTimeout(() => {
+                    const row = document.createElement('div');
+                    row.innerHTML = line;
+                    consoleLog.appendChild(row);
+                    consoleLog.scrollTop = consoleLog.scrollHeight;
+                }, index * 300);
+            });
+        }
+    </script>
+</body>
+</html>
